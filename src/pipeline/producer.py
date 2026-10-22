@@ -18,7 +18,6 @@ DATA_PATH = PROJECT_ROOT / "data" / "raw" / "online_retail_II.xlsx"
 KAFKA_BOOTSTRAP_SERVERS = "localhost:9092"
 KAFKA_TOPIC = "ecommerce-orders"
 
-# Default hanya 10 event untuk pengujian awal.
 MAX_EVENTS = int(os.getenv("MAX_EVENTS", "10"))
 EVENT_DELAY_SECONDS = 0.2
 
@@ -41,14 +40,12 @@ def main():
 
     logging.info("Membaca dataset: %s", DATA_PATH)
 
-    # Ambil sejumlah baris saja agar pengujian tidak mengirim semua data.
     df = pd.read_excel(
         DATA_PATH,
         sheet_name="Year 2009-2010",
         nrows=MAX_EVENTS,
     )
 
-    # Nama kolom dibuat konsisten untuk event JSON.
     df.columns = [
         str(column).strip().replace(" ", "_")
         for column in df.columns
@@ -62,22 +59,27 @@ def main():
     )
 
     sent = 0
+    run_id = time.time_ns()
 
     try:
         for row in df.to_dict(orient="records"):
             event = {
-                "event_id": sent + 1,
+                "event_id": run_id + sent,
                 "event_type": "retail_transaction",
                 "source": "online_retail_ii",
                 "data": row,
             }
 
-            producer.send(KAFKA_TOPIC, value=event).get(timeout=30)
+            producer.send(
+                KAFKA_TOPIC,
+                value=event,
+            ).get(timeout=30)
+
             sent += 1
 
             logging.info(
                 "Event %s terkirim | Invoice=%s",
-                sent,
+                event["event_id"],
                 row.get("Invoice"),
             )
 

@@ -1,195 +1,397 @@
 # Real-Time E-Commerce Data Pipeline
 
-Pipeline data streaming untuk mensimulasikan transaksi e-commerce historis menggunakan Python, Apache Kafka, dan PostgreSQL.
+Pipeline data engineering untuk mensimulasikan aliran transaksi e-commerce historis menggunakan Python, Apache Kafka, dan PostgreSQL. Data yang telah diproses disajikan melalui dashboard interaktif menggunakan Streamlit.
+
+Proyek ini menerapkan alur ingestion, validasi event, penyimpanan data mentah, penanganan event tidak valid melalui Dead Letter Queue (DLQ), dan penyajian metrik analitik.
+
+> **Catatan:** Dataset yang digunakan adalah data historis UCI Online Retail II. Data dikirim secara bertahap untuk mensimulasikan streaming, bukan berasal dari transaksi e-commerce live.
 
 ## Arsitektur
 
+```text
 Dataset Excel Online Retail II
-→ Python Producer
-→ Kafka topic `ecommerce-orders`
-→ Python Consumer
-→ Validasi event
-→ PostgreSQL `raw_events` atau `dead_letter_events`
+              |
+              v
+      Python Producer
+              |
+              v
+     Kafka: ecommerce-orders
+              |
+              v
+       Python Consumer
+              |
+              v
+       Validasi Event
+          /       \
+         /         \
+        v           v
+   Event Valid   Event Tidak Valid
+        |           |
+        v           v
+   PostgreSQL    Dead Letter Queue
+   raw_events    dead_letter_events
+        |
+        v
+   Analytics View
+        |
+        v
+   Streamlit Dashboard
+```
 
-Dashboard disediakan melalui aplikasi Streamlit.
+### Alur pemrosesan
 
-> Dataset ini bersifat historis dan dikirim secara bertahap untuk simulasi streaming. Pipeline ini tidak menerima transaksi e-commerce live.
+1. Producer membaca baris transaksi dari file Excel.
+2. Setiap baris dikemas menjadi event JSON.
+3. Producer mengirim event ke topic Kafka `ecommerce-orders`.
+4. Consumer menerima event dan memvalidasi struktur serta field wajib.
+5. Event valid disimpan ke tabel `raw_events`.
+6. Event tidak valid disimpan ke tabel `dead_letter_events` beserta alasan kegagalannya.
+7. View analitik menyediakan ringkasan transaksi untuk dashboard Streamlit.
 
 ## Teknologi
 
-- Python 3.12
-- Apache Kafka 4.0.0
-- PostgreSQL 16
-- Docker Compose
-- pandas, openpyxl, psycopg, kafka-python
-- pytest
-- Streamlit
+| Teknologi          | Fungsi                                        |
+| ------------------ | --------------------------------------------- |
+| Python 3.12        | Bahasa pemrograman pipeline                   |
+| Apache Kafka 4.0.0 | Message broker untuk simulasi streaming       |
+| PostgreSQL 16      | Penyimpanan event dan hasil analitik          |
+| Docker Compose     | Menjalankan Kafka dan PostgreSQL              |
+| pandas             | Pengolahan data tabular                       |
+| openpyxl           | Membaca file Excel                            |
+| kafka-python       | Komunikasi producer dan consumer dengan Kafka |
+| psycopg            | Koneksi Python ke PostgreSQL                  |
+| Streamlit          | Dashboard interaktif                          |
+| pytest             | Pengujian unit dan integrasi                  |
 
-## Struktur Utama
+## Struktur Proyek
+
+```text
+realtime-ecommerce-pipeline/
+├── dashboard/
+│   └── app.py
+├── data/
+│   └── raw/
+│       └── online_retail_II.xlsx
+├── scripts/
+│   ├── inspect_dataset.py
+│   └── simulate_stream.py
+├── sql/
+│   ├── 01_create_tables.sql
+│   ├── 02_analytics.sql
+│   └── 03_create_dlq.sql
+├── src/
+│   └── pipeline/
+│       ├── __init__.py
+│       ├── consumer.py
+│       ├── db.py
+│       ├── producer.py
+│       ├── schemas.py
+│       ├── test_dlq_producer.py
+│       └── validation.py
+├── tests/
+│   ├── integration/
+│   │   └── test_kafka_postgres.py
+│   ├── test_consumer.py
+│   └── test_validation.py
+├── .env.example
+├── .gitignore
+├── docker-compose.yml
+├── pytest.ini
+├── requirements.txt
+└── README.md
+```
+
+### Fungsi komponen utama
 
 - `src/pipeline/producer.py`: membaca dataset dan mengirim event ke Kafka.
-- `src/pipeline/consumer.py`: menerima event, memvalidasi, dan menyimpan ke PostgreSQL.
-- `src/pipeline/validation.py`: memeriksa struktur dan field transaksi.
-- `src/pipeline/db.py`: mengatur koneksi PostgreSQL.
-- `sql/01_create_tables.sql`: membuat tabel event mentah.
+- `src/pipeline/consumer.py`: menerima event, menjalankan validasi, dan menyimpan hasil ke PostgreSQL.
+- `src/pipeline/validation.py`: memeriksa struktur event dan field wajib transaksi.
+- `src/pipeline/db.py`: mengelola koneksi PostgreSQL.
+- `src/pipeline/schemas.py`: mendefinisikan struktur data menggunakan type hints.
+- `src/pipeline/test_dlq_producer.py`: utilitas untuk menghasilkan event tidak valid guna menguji DLQ.
+- `scripts/inspect_dataset.py`: memeriksa karakteristik dataset sebelum diproses.
+- `scripts/simulate_stream.py`: menjalankan producer untuk simulasi pengiriman event.
+- `sql/01_create_tables.sql`: membuat tabel penyimpanan event.
 - `sql/02_analytics.sql`: membuat view analitik.
 - `sql/03_create_dlq.sql`: membuat tabel Dead Letter Queue.
-- `tests/`: unit test dan integration test.
-- `dashboard/app.py`: aplikasi dashboard.
-- `scripts/`: utilitas dataset dan simulasi streaming.
+- `dashboard/app.py`: aplikasi dashboard untuk memantau data pipeline.
+- `tests/`: pengujian unit dan integrasi.
 
 ## Prasyarat
 
-- Docker Engine dan Docker Compose
-- Python 3.12
-- Dataset Online Retail II yang tersedia secara lokal
-- Linux atau WSL Ubuntu
+Pastikan perangkat sudah memiliki:
 
-## Konfigurasi
+- Linux atau WSL Ubuntu.
+- Python 3.12.
+- Docker Engine dan Docker Compose.
+- Dataset UCI Online Retail II dalam format Excel.
+- Terminal yang dapat mengakses Docker dan direktori proyek.
 
-Buat `.env` hanya jika belum tersedia:
+## Instalasi dan Konfigurasi
+
+### 1. Masuk ke direktori proyek
+
+```bash
+cd ~/projects/realtime-ecommerce-pipeline
+```
+
+### 2. Buat virtual environment
+
+Jika `.venv` belum tersedia:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+```
+
+### 3. Instal dependensi Python
+
+```bash
+pip install -r requirements.txt
+```
+
+### 4. Siapkan konfigurasi environment
+
+Jika file `.env` belum tersedia:
 
 ```bash
 cp .env.example .env
 ```
 
-Atur `POSTGRES_PASSWORD` pada `.env` dengan password lokal yang sesuai. Jangan commit atau membagikan `.env`.
+Sesuaikan konfigurasi lokal pada `.env` dengan `docker-compose.yml` dan `src/pipeline/db.py`.
 
-Konfigurasi aplikasi secara default:
+Konfigurasi koneksi PostgreSQL yang digunakan oleh aplikasi:
 
-- Host: `localhost`
-- Port: `5433`
-- Database: `ecommerce_stream`
-- User: `pipeline_user`
+| Parameter | Nilai                    |
+| --------- | ------------------------ |
+| Host      | `localhost`              |
+| Port      | `5433`                   |
+| Database  | `ecommerce_stream`       |
+| User      | `pipeline_user`          |
+| Password  | Sesuai konfigurasi lokal |
+
+Jangan menyimpan password aktif, token, atau informasi rahasia di README maupun repository.
+
+### 5. Siapkan dataset
+
+Letakkan file Excel pada lokasi berikut:
+
+```text
+data/raw/online_retail_II.xlsx
+```
+
+Producer menggunakan sheet:
+
+```text
+Year 2009-2010
+```
+
+Nama dan lokasi file harus sesuai dengan konfigurasi pada producer.
 
 ## Menjalankan Pipeline
 
-### 1. Aktifkan virtual environment
+Pipeline dijalankan menggunakan beberapa terminal agar consumer dan dashboard tetap aktif selama producer mengirim event.
 
-```bash
-source .venv/bin/activate
-```
+### 1. Jalankan Kafka dan PostgreSQL
 
-Jika environment belum tersedia:
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-```
-
-### 2. Jalankan Kafka dan PostgreSQL
+Dari direktori utama proyek:
 
 ```bash
 docker compose up -d
+```
+
+Periksa status container:
+
+```bash
 docker compose ps
 ```
 
-Pastikan kedua layanan sehat sebelum melanjutkan.
+Pastikan layanan Kafka dan PostgreSQL sudah berjalan sebelum melanjutkan.
 
-### 3. Buat tabel database
+### 2. Inisialisasi tabel dan view
 
-Jalankan file SQL dari direktori proyek:
+Jalankan skrip SQL berikut dari direktori utama proyek:
 
 ```bash
 docker compose exec -T postgres psql \
-  -U pipeline_user -d ecommerce_stream \
+  -U pipeline_user \
+  -d ecommerce_stream \
   < sql/01_create_tables.sql
+```
 
+```bash
 docker compose exec -T postgres psql \
-  -U pipeline_user -d ecommerce_stream \
+  -U pipeline_user \
+  -d ecommerce_stream \
   < sql/03_create_dlq.sql
+```
 
+```bash
 docker compose exec -T postgres psql \
-  -U pipeline_user -d ecommerce_stream \
+  -U pipeline_user \
+  -d ecommerce_stream \
   < sql/02_analytics.sql
 ```
 
-### 4. Jalankan consumer
+Skrip tersebut menyiapkan tabel event, tabel DLQ, dan view analitik. Perintah ini tidak dimaksudkan untuk menghapus data yang sudah tersimpan; perilaku sebenarnya mengikuti isi skrip SQL.
 
-Buka Terminal 1:
+### 3. Jalankan consumer
+
+Buka **Terminal 1**:
 
 ```bash
+cd ~/projects/realtime-ecommerce-pipeline
+source .venv/bin/activate
 PYTHONPATH=src python src/pipeline/consumer.py
 ```
 
-Biarkan proses berjalan agar consumer menerima pesan Kafka.
+Biarkan proses tetap berjalan. Consumer akan membaca event dari Kafka dan memprosesnya sesuai aturan validasi.
 
-### 5. Jalankan producer
+### 4. Jalankan producer
 
-Buka Terminal 2:
+Buka **Terminal 2**:
+
+```bash
+cd ~/projects/realtime-ecommerce-pipeline
+source .venv/bin/activate
+MAX_EVENTS=10 python scripts/simulate_stream.py
+```
+
+Perintah tersebut membatasi pengiriman menjadi maksimal 10 baris untuk satu kali eksekusi.
+
+Untuk pengujian dengan lima event:
+
+```bash
+MAX_EVENTS=5 python scripts/simulate_stream.py
+```
+
+Untuk menjalankan producer secara langsung:
 
 ```bash
 PYTHONPATH=src python src/pipeline/producer.py
 ```
 
-Producer membaca dataset lokal dan mengirim event ke topic `ecommerce-orders`.
+Producer mengirim data secara bertahap. Jumlah event yang benar-benar tersimpan dapat berbeda dari jumlah yang dikirim jika ada event tidak valid atau konflik data.
 
-### 6. Periksa data
+### 5. Periksa data PostgreSQL
+
+Buka terminal lain dan hitung event yang tersimpan:
 
 ```bash
-docker compose exec postgres psql \
-  -U pipeline_user -d ecommerce_stream
+docker compose exec -T postgres psql \
+  -U pipeline_user \
+  -d ecommerce_stream \
+  -c "SELECT COUNT(*) AS total_events FROM raw_events;"
 ```
 
-Di prompt PostgreSQL:
+Hitung event di DLQ:
 
-```sql
-SELECT COUNT(*) FROM raw_events;
-SELECT COUNT(*) FROM dead_letter_events;
+```bash
+docker compose exec -T postgres psql \
+  -U pipeline_user \
+  -d ecommerce_stream \
+  -c "SELECT COUNT(*) AS dlq_events FROM dead_letter_events;"
 ```
 
-Keluar dengan `\q`.
+Lihat beberapa event terbaru:
+
+```bash
+docker compose exec -T postgres psql \
+  -U pipeline_user \
+  -d ecommerce_stream \
+  -c "SELECT event_id, event_type, source, kafka_topic, kafka_partition, kafka_offset FROM raw_events ORDER BY id DESC LIMIT 10;"
+```
+
+Nilai `total_events` dan `dlq_events` bergantung pada aktivitas producer dan pengujian yang sudah dijalankan.
 
 ## Menjalankan Dashboard
 
-Periksa konfigurasi `dashboard/app.py` dan dependensi Streamlit sebelum menjalankan dashboard. Pastikan layanan dan database tersedia.
+Buka **Terminal 3**:
+
+```bash
+cd ~/projects/realtime-ecommerce-pipeline
+source .venv/bin/activate
+PYTHONPATH=src python -m streamlit run dashboard/app.py
+```
+
+Setelah aplikasi berjalan, buka alamat berikut di browser:
+
+```text
+http://localhost:8501
+```
+
+Dashboard menampilkan ringkasan event tersimpan, Dead Letter Queue, serta metrik transaksi yang tersedia dari view analitik.
+
+Pastikan Kafka dan PostgreSQL telah berjalan dan skema database sudah tersedia sebelum membuka dashboard.
 
 ## Pengujian
 
-Jalankan semua tes:
+### 1. Jalankan seluruh pengujian
 
 ```bash
 pytest -v
 ```
 
-Unit test:
+### 2. Jalankan unit test
 
 ```bash
 pytest -v tests/test_validation.py tests/test_consumer.py
 ```
 
-Integration test:
+Unit test digunakan untuk memeriksa logika validasi dan pemrosesan event tanpa harus selalu menjalankan seluruh pipeline.
+
+### 3. Jalankan integration test
 
 ```bash
 pytest -v -m integration tests/integration/test_kafka_postgres.py
 ```
 
-Integration test membutuhkan Kafka, PostgreSQL, serta consumer yang aktif.
+Integration test memerlukan layanan pendukung yang sesuai dengan konfigurasi pengujian, termasuk Kafka dan PostgreSQL.
+
+Hasil pengujian perlu dicatat berdasarkan eksekusi terbaru. Jangan menganggap hasil pengujian sebelumnya sebagai hasil yang otomatis berlaku setelah perubahan kode.
 
 ## Hasil Verifikasi
 
-Pada pemeriksaan sebelumnya:
+Pada pengujian terakhir yang tercatat:
 
-- `raw_events`: 17 baris.
-- `dead_letter_events`: 5 baris.
-- Duplikasi fingerprint yang ditemukan: 0.
-- Duplikasi posisi Kafka yang ditemukan: 0.
-- Seluruh pengujian: 12 passed.
+| Pemeriksaan                                 |   Hasil |
+| ------------------------------------------- | ------: |
+| Event di `raw_events`                       |      69 |
+| Event di `dead_letter_events`               |      16 |
+| Total event pada kedua tabel                |      85 |
+| Pengiriman producer pada pengujian terakhir | 5 event |
 
-Hasil tersebut merupakan snapshot saat pemeriksaan, bukan jumlah tetap. Menjalankan producer atau integration test kembali dapat menambah data.
+Pengujian producer tersebut meningkatkan jumlah event tersimpan dari 64 menjadi 69.
 
-Pengujian terakhir menghasilkan `12 passed, 222 warnings`. Peringatan berasal dari API lama di dependensi Kafka dan penggunaan serializer pada integration test.
+Pemeriksaan sebelumnya terhadap `raw_events` menunjukkan bahwa jumlah fingerprint unik dan posisi pesan Kafka unik sama dengan jumlah baris yang diperiksa, serta tidak ditemukan payload kosong pada pemeriksaan tersebut.
+
+Sebagian event DLQ berasal dari pengujian dengan payload tidak valid, termasuk event yang tidak memiliki field `data` dan `event_type`.
+
+Angka di atas merupakan snapshot pengujian, bukan jumlah tetap. Jumlah event dapat berubah ketika producer atau integration test dijalankan kembali. Jalankan query PostgreSQL untuk memperoleh kondisi terbaru.
 
 ## Batasan
 
-- Dataset transaksi bersifat historis.
-- Kafka menggunakan satu broker untuk lingkungan pengembangan, bukan konfigurasi high availability.
-- Integration test membutuhkan layanan lokal.
-- Penyimpanan database menggunakan fingerprint event dan posisi pesan Kafka untuk mencegah duplikasi.
+- Dataset yang digunakan bersifat historis, bukan transaksi e-commerce live.
+- Pengiriman event secara bertahap digunakan untuk mensimulasikan streaming.
+- Kafka menggunakan satu broker untuk lingkungan pengembangan, sehingga belum menyediakan high availability.
+- Pengujian integrasi bergantung pada layanan dan konfigurasi lokal.
+- Data yang tidak memenuhi aturan validasi diarahkan ke Dead Letter Queue.
+- Mekanisme fingerprint dan posisi pesan Kafka digunakan untuk membantu mencegah penyimpanan event duplikat.
 
 ## Keamanan
 
-- Jangan commit `.env`, password, token, atau rahasia lainnya.
-- Dataset mentah dikecualikan melalui `.gitignore`.
-- `.env.example` harus berisi nilai contoh, bukan password aktif.
+- File `.env` tidak boleh di-commit ke repository.
+- Gunakan `.env.example` untuk mendokumentasikan nama variabel konfigurasi tanpa menyertakan kredensial aktif.
+- Jangan memasukkan password, token, atau informasi rahasia ke README.
+- Dataset mentah dikecualikan dari Git melalui aturan `.gitignore`.
+- Hindari membagikan data atau konfigurasi lokal yang bersifat sensitif.
+
+## Pengembangan Selanjutnya
+
+Beberapa pengembangan yang dapat dipertimbangkan:
+
+- Menambahkan logging terstruktur dan metrik operasional pipeline.
+- Memperbaiki peringatan deprecation dari library Kafka.
+- Menambahkan pemantauan consumer lag dan throughput.
+- Memperluas pengujian untuk skenario event duplikat dan payload tidak valid.
+- Menambahkan konfigurasi deployment dan pemantauan yang lebih sesuai untuk lingkungan produksi.
