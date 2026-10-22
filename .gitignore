@@ -14,3 +14,9 @@ data/raw/
 
 # Log
 *.log
+
+# File metadata Windows/WSL
+*:Zone.Identifier
+
+# Streamlit
+.streamlit/secrets.toml
