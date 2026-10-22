@@ -4,3 +4,4 @@ openpyxl==3.1.5
 pytest
 psycopg[binary]
 python-dotenv
+streamlit
