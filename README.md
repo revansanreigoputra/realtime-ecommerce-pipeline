@@ -352,22 +352,23 @@ Hasil pengujian perlu dicatat berdasarkan eksekusi terbaru. Jangan menganggap ha
 
 ## Hasil Verifikasi
 
-Pada pengujian terakhir yang tercatat:
+Pada pengujian terakhir, pipeline berhasil melewati seluruh 12 automated tests.
 
-| Pemeriksaan                                 |   Hasil |
-| ------------------------------------------- | ------: |
-| Event di `raw_events`                       |      69 |
-| Event di `dead_letter_events`               |      16 |
-| Total event pada kedua tabel                |      85 |
-| Pengiriman producer pada pengujian terakhir | 5 event |
+| Pemeriksaan                      |     Hasil |
+| -------------------------------- | --------: |
+| Event di `raw_events`            |        98 |
+| Fingerprint unik di `raw_events` |        98 |
+| Event di `dead_letter_events`    |        21 |
+| Posisi Kafka unik pada DLQ       |        21 |
+| Automated tests                  | 12 passed |
 
-Pengujian producer tersebut meningkatkan jumlah event tersimpan dari 64 menjadi 69.
+Pemeriksaan menunjukkan bahwa jumlah event di `raw_events` sama dengan jumlah fingerprint unik. Pada DLQ, seluruh 21 event memiliki posisi Kafka yang berbeda.
 
-Pemeriksaan sebelumnya terhadap `raw_events` menunjukkan bahwa jumlah fingerprint unik dan posisi pesan Kafka unik sama dengan jumlah baris yang diperiksa, serta tidak ditemukan payload kosong pada pemeriksaan tersebut.
+Event tidak valid yang tercatat pada DLQ berasal dari `integration_test_dlq` sebanyak 19 event dan `dlq_test` sebanyak 2 event. Seluruhnya memiliki alasan kegagalan berupa field `data` dan `event_type` yang hilang.
 
-Sebagian event DLQ berasal dari pengujian dengan payload tidak valid, termasuk event yang tidak memiliki field `data` dan `event_type`.
+Hasil tersebut merupakan snapshot pengujian lokal. Jumlah event dapat berubah ketika producer atau integration test dijalankan kembali. Gunakan query PostgreSQL untuk memeriksa kondisi terkini.
 
-Angka di atas merupakan snapshot pengujian, bukan jumlah tetap. Jumlah event dapat berubah ketika producer atau integration test dijalankan kembali. Jalankan query PostgreSQL untuk memperoleh kondisi terbaru.
+Pengujian menghasilkan sejumlah `DeprecationWarning` dari dependensi Kafka dan penggunaan `value_serializer` pada integration test. Peringatan tersebut tidak menggagalkan pengujian.
 
 ## Batasan
 
